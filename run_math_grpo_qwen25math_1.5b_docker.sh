@@ -20,6 +20,10 @@ docker run --rm \
   --net=host \
   --name "$CONTAINER_NAME" \
   -e SMOKE_STEPS="${SMOKE_STEPS:-0}" \
+  -e TOTAL_STEPS="${TOTAL_STEPS:-}" \
+  -e SAVE_FREQ="${SAVE_FREQ:-50}" \
+  -e TEST_FREQ="${TEST_FREQ:-100}" \
+  -e VAL_BEFORE_TRAIN="${VAL_BEFORE_TRAIN:-True}" \
   -e PROJECT_NAME="${PROJECT_NAME:-codistill_repro_math}" \
   -e EXP_NAME="${EXP_NAME:-qwen25math_1.5b_grpo}" \
   -e LOGGER="${LOGGER:-[\"console\"]}" \

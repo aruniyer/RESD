@@ -116,20 +116,24 @@ TRAINER=(
   trainer.n_gpus_per_node=4
   trainer.nnodes=1
   trainer.max_actor_ckpt_to_keep=1
-  trainer.save_freq=50
-  trainer.test_freq=50
-  trainer.val_before_train=True
+  trainer.save_freq=${SAVE_FREQ:-50}
+  trainer.test_freq=${TEST_FREQ:-100}
+  trainer.val_before_train=${VAL_BEFORE_TRAIN:-True}
   trainer.rollout_data_dir="checkpoints/${project_name}/${exp_name}/rollouts"
   trainer.validation_data_dir="checkpoints/${project_name}/${exp_name}/val_generations"
 )
 
-# Override total_training_steps when SMOKE_STEPS is set (for smoke test)
+# Override total_training_steps when SMOKE_STEPS or TOTAL_STEPS is set.
 if [[ "${SMOKE_STEPS}" -gt 0 ]]; then
   TRAINER+=(
     trainer.total_training_steps=${SMOKE_STEPS}
     trainer.test_freq=999
     trainer.save_freq=0
     trainer.val_before_train=False
+  )
+elif [[ -n "${TOTAL_STEPS:-}" ]]; then
+  TRAINER+=(
+    trainer.total_training_steps=${TOTAL_STEPS}
   )
 fi
 
