@@ -90,20 +90,27 @@ def is_correct_strict_box(
 ) -> tuple[int, Optional[str]]:
     """Check if the prediction is correct using strict boxed answer criteria.
 
+    Searches the ENTIRE response for the last \\boxed{...} expression and
+    compares it to the ground truth via exact string equality. (The earlier
+    behaviour truncated to the last 100 characters, which silently dropped
+    correct answers when the model produced long reasoning or trailing
+    repetition; matches DeepSeek-Math's regex-over-whole-response extractor.)
+
     Args:
         pred: The prediction string
         gt: The ground truth answer
-        pause_tokens_index: Indices of pause tokens
+        pause_tokens_index: Indices of pause tokens. When provided, only the
+            text up to the final pause token is considered (legacy behaviour).
 
     Returns:
         Tuple of (score, extracted_prediction)
     """
-    # Extract the relevant part of the prediction
+    # Restrict to text up to the pause point if requested (legacy callers
+    # use this to drop padding tokens), but otherwise search the whole
+    # response.
     if pause_tokens_index is not None:
         assert len(pause_tokens_index) == 4
-        pred = pred[pause_tokens_index[-1] - 100 :]
-    else:
-        pred = pred[-100:]
+        pred = pred[: pause_tokens_index[-1]]
 
     # Extract and check the boxed answer
     boxed_pred = last_boxed_only_string(pred)
@@ -117,26 +124,43 @@ def verify(
 ) -> bool:
     """Verify if the solution is correct.
 
+    Three-tier extraction, matching DeepSeek-Math's robust math_equal:
+      1. Strict boxed extraction + string equality
+      2. math_verify equivalence on the extracted boxed predicate
+      3. math_verify equivalence on the full response (catches free-text
+         answers like "the polar form is (3, π/2)" that the model wrote
+         without \\boxed{} wrapping, especially common at baseline/early-RL
+         stages before the model has learned the output format)
+
     Args:
         solution_str: The solution string to verify
         answer: The ground truth answer
-        strict_box_verify: Whether to use strict box verification
         pause_tokens_index: Indices of pause tokens
 
     Returns:
-        True if the solution is correct, False otherwise
+        Tuple (correct: bool, pred: str)
     """
     correct, pred = is_correct_strict_box(solution_str, answer, pause_tokens_index)
     if pred is None:
         pred = ""
 
-    # try Math-Verify equivalence check
-    if not correct and pred != "":
+    if not correct:
         try:
             with timeout(seconds=5):
                 gold_expr = mv_parse(answer)
-                pred_expr = mv_parse(pred)
-                correct = mv_verify(gold_expr, pred_expr)
+                # Tier 2: math-verify on the extracted boxed predicate.
+                if pred != "":
+                    pred_expr = mv_parse(pred)
+                    if mv_verify(gold_expr, pred_expr):
+                        correct = True
+                # Tier 3: math-verify on the whole response. math_verify is
+                # designed to walk free-text and identify the last/most
+                # plausible math expression; this catches correct answers
+                # the model wrote without wrapping in \\boxed{}.
+                if not correct:
+                    pred_expr_full = mv_parse(solution_str)
+                    if mv_verify(gold_expr, pred_expr_full):
+                        correct = True
         except Exception:  # ignore any parsing/verification errors
             pass
     return correct, pred
