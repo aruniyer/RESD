@@ -193,3 +193,130 @@ def compute_score(
         "truncated_and_missing_answer": 1 if incorrect_format and was_truncated else 0,
         "feedback": feedback,
     }
+
+
+# ---------------------------------------------------------------------------
+# DeepSeek-R1-Zero / CoDistill-GRPO compatible reward
+# ---------------------------------------------------------------------------
+
+THINK_OPEN = "<think>"
+THINK_CLOSE = "</think>"
+ANSWER_OPEN = "<answer>"
+ANSWER_CLOSE = "</answer>"
+
+
+def _format_reward(solution_str: str) -> float:
+    """0.25 per closing tag present (CoDistill-GRPO, Appendix A).
+
+    Follows DeepSeek-R1-Zero: reward 0.25 each for </think> and </answer>.
+    Max format reward is 0.50; combined with the 1.0 accuracy reward the
+    total possible reward is 1.50.
+    """
+    r = 0.0
+    if THINK_CLOSE in solution_str:
+        r += 0.25
+    if ANSWER_CLOSE in solution_str:
+        r += 0.25
+    return r
+
+
+def _extract_answer_from_tags(solution_str: str) -> Optional[str]:
+    """Pull the contents of <answer>...</answer>, then the inner boxed expression
+    if present. Returns None if no <answer> tag is found."""
+    start = solution_str.rfind(ANSWER_OPEN)
+    if start < 0:
+        return None
+    inner = solution_str[start + len(ANSWER_OPEN):]
+    end = inner.find(ANSWER_CLOSE)
+    if end >= 0:
+        inner = inner[:end]
+    inner = inner.strip()
+    # if the answer block itself contains a \boxed{...}, prefer that
+    boxed = last_boxed_only_string(inner)
+    if boxed:
+        inner = remove_boxed(boxed)
+    return inner
+
+
+def compute_score_r1zero(
+    solution_str: str,
+    ground_truth: str,
+    extra_info=None,
+    pause_tokens_index: Optional[list[int]] = None,
+    format_feedback: bool = True,
+    correctness_feedback: bool = False,
+    **kwargs,
+) -> dict:
+    """Reward function for the DeepSeek-R1-Zero template used by CoDistill-GRPO.
+
+    Combines:
+      - 1.00 accuracy reward (1 if math_verify agrees, else 0)
+      - 0.50 format reward (0.25 each for </think> and </answer> tags)
+
+    Total possible reward = 1.50. The textual feedback follows the same
+    pattern as `compute_score`, but additionally mentions missing format tags
+    when format reward is < 0.50.
+    """
+    extra_info = extra_info or {}
+    split = extra_info.get("split", "test")
+    was_truncated = extra_info.get("truncated", False)
+
+    fmt_r = _format_reward(solution_str)
+    has_full_format = fmt_r >= 0.50
+
+    # Try the tag-based extractor first (R1-Zero protocol), then fall back to
+    # the legacy boxed-only protocol so we don't penalize models that haven't
+    # yet learned the tag format.
+    pred_from_tags = _extract_answer_from_tags(solution_str)
+    if pred_from_tags is not None and pred_from_tags != "":
+        # use the inner answer block to verify
+        correct, _ = verify(
+            "answer: \\boxed{" + pred_from_tags + "}",
+            ground_truth, pause_tokens_index,
+        )
+        pred = pred_from_tags
+        incorrect_format = False
+    else:
+        correct, pred = verify(solution_str, ground_truth, pause_tokens_index)
+        incorrect_format = pred is None or pred == ""
+
+    acc_reward = 1.0 if correct else 0.0
+    score = acc_reward + fmt_r
+
+    feedback_parts = []
+    if not has_full_format and format_feedback:
+        missing = []
+        if THINK_CLOSE not in solution_str:
+            missing.append(THINK_CLOSE)
+        if ANSWER_CLOSE not in solution_str:
+            missing.append(ANSWER_CLOSE)
+        feedback_parts.append(
+            "Your response is missing the following required closing tag(s): "
+            + ", ".join(missing) + ". The expected format is "
+            "<think>reasoning</think><answer>final answer in \\boxed{}</answer>."
+        )
+    if incorrect_format and format_feedback:
+        feedback_parts.append(
+            "Your answer had the wrong format. The solution must be given in "
+            "the format: \\boxed{your_answer}."
+        )
+    if was_truncated and format_feedback:
+        feedback_parts.append(
+            "Your response was truncated because it exceeded the maximum length."
+        )
+    if not correct and correctness_feedback:
+        feedback_parts.append(
+            f"Your answer is incorrect. The correct answer is {ground_truth}."
+        )
+    feedback = " ".join(feedback_parts)
+
+    return {
+        "score": score,
+        "acc": acc_reward,
+        "format_reward": fmt_r,
+        "pred": pred or "",
+        "incorrect_format": 1 if incorrect_format else 0,
+        "truncated": 1 if was_truncated else 0,
+        "truncated_and_missing_answer": 1 if incorrect_format and was_truncated else 0,
+        "feedback": feedback,
+    }
