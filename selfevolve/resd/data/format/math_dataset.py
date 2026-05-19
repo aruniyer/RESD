@@ -35,8 +35,20 @@ from typing import Optional
 
 import pandas as pd
 
-# DeepSeek-R1-Zero chat template from CoDistill-GRPO Appendix A, Table 5
-MATH_PROMPT_TEMPLATE = "Please reason step by step, and put your final answer within \\boxed{{}}.\n\nQuestion: {prompt}. Answer:"
+# CoDistill-GRPO Appendix A, Table 5 — exact R1-Zero conversation template
+# for Qwen models. We split it into a system message (the conversation
+# framing instructing the model to use <think>/<answer> tags) and a user
+# message (the math problem itself), so that the model's chat template
+# wraps them in the correct <|im_start|>system/user/assistant tokens.
+R1_ZERO_SYSTEM_PROMPT = (
+    "A conversation between User and Assistant. The user asks a question, "
+    "and the Assistant solves it. The assistant first thinks about the "
+    "reasoning process in the mind and then provides the user with the "
+    "answer. The reasoning process and answer are enclosed within "
+    "<think></think> and <answer></answer> tags, respectively, i.e., "
+    "<think> reasoning process here </think> and <answer> answer here "
+    "</answer>."
+)
 
 
 def last_boxed_only_string(string: str) -> Optional[str]:
@@ -86,13 +98,21 @@ def extract_answer_from_solution(solution: str) -> str:
 
 def make_record(idx: int, problem: str, answer: str, data_source: str,
                 split: str, extra: Optional[dict] = None) -> dict:
-    """One processed sample matching the schema expected by rl_dataset."""
-    prompt_text = MATH_PROMPT_TEMPLATE.format(prompt=problem.strip())
+    """One processed sample matching the schema expected by rl_dataset.
+
+    Uses the CoDistill-GRPO / DeepSeek-R1-Zero protocol:
+      - system message: R1-Zero conversation framing (forces <think>/<answer> tags)
+      - user message:   raw math problem
+      - assistant continues; format reward rewards closing tags emitted.
+    """
     extra_info = {"index": str(idx), "split": split}
     if extra:
         extra_info.update(extra)
     return {
-        "prompt": [{"role": "user", "content": prompt_text}],
+        "prompt": [
+            {"role": "system", "content": R1_ZERO_SYSTEM_PROMPT},
+            {"role": "user", "content": problem.strip()},
+        ],
         "question": problem.strip(),
         "target": answer,
         "others": {"task": "math", "data_source": data_source},
