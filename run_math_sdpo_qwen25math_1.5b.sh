@@ -39,10 +39,12 @@ LR=${LR:-1e-6}
 TOTAL_EPOCHS=${TOTAL_EPOCHS:-8}
 MAX_PROMPT_LENGTH=${MAX_PROMPT_LENGTH:-1024}
 MAX_RESPONSE_LENGTH=${MAX_RESPONSE_LENGTH:-3072}
-# Reprompt len: prompt + solution template + demonstration ≈ 1024 + 512 + 3072 = 4608
-MAX_REPROMPT_LENGTH=${MAX_REPROMPT_LENGTH:-6144}
-# Model len must cover reprompt + response for teacher logit computation
-MAX_MODEL_LEN=$((MAX_REPROMPT_LENGTH + MAX_RESPONSE_LENGTH))
+# Qwen2.5-Math-1.5B has max_position_embeddings=4096.
+# vLLM max_model_len = prompt + response = 4096 (same as GRPO).
+# Reprompt (for teacher logits) must also fit in 4096: reprompt_prompt + response ≤ 4096.
+# We set max_reprompt_len=1536 so truncated reprompt + response (≤2560) fits.
+MAX_REPROMPT_LENGTH=${MAX_REPROMPT_LENGTH:-1536}
+MAX_MODEL_LEN=$((MAX_PROMPT_LENGTH + MAX_RESPONSE_LENGTH))
 
 # Self-distillation hyperparameters
 ALPHA=${ALPHA:-0.5}                        # 0.5 = JSD (symmetric KL)
@@ -111,7 +113,7 @@ ROLLOUT=(
   actor_rollout_ref.rollout.val_kwargs.do_sample=False
   actor_rollout_ref.rollout.tensor_model_parallel_size=2
   actor_rollout_ref.rollout.name=vllm
-  actor_rollout_ref.rollout.gpu_memory_utilization=0.50
+  actor_rollout_ref.rollout.gpu_memory_utilization=0.55
   actor_rollout_ref.rollout.max_model_len=${MAX_MODEL_LEN}
   actor_rollout_ref.rollout.enforce_eager=True
   actor_rollout_ref.rollout.temperature=1.0
