@@ -321,30 +321,66 @@ def compute_score_r1zero(
     score = acc_reward + fmt_r
 
     feedback_parts = []
-    if not has_full_format and format_feedback:
-        missing = []
-        if THINK_CLOSE not in solution_str:
-            missing.append(THINK_CLOSE)
-        if ANSWER_CLOSE not in solution_str:
-            missing.append(ANSWER_CLOSE)
-        feedback_parts.append(
-            "Your response is missing the following required closing tag(s): "
-            + ", ".join(missing) + ". The expected format is "
-            "<think>reasoning</think><answer>final answer in \\boxed{}</answer>."
-        )
-    if incorrect_format and format_feedback:
-        feedback_parts.append(
-            "Your answer had the wrong format. The solution must be given in "
-            "the format: \\boxed{your_answer}."
-        )
-    if was_truncated and format_feedback:
-        feedback_parts.append(
-            "Your response was truncated because it exceeded the maximum length."
-        )
+
+    # --- Rich format feedback ---
+    if format_feedback:
+        has_think_open = THINK_OPEN in solution_str
+        has_think_close = THINK_CLOSE in solution_str
+        has_answer_open = ANSWER_OPEN in solution_str
+        has_answer_close = ANSWER_CLOSE in solution_str
+
+        if was_truncated:
+            feedback_parts.append(
+                "Your response was truncated because it exceeded the maximum length. "
+                "Keep your reasoning concise so the full solution fits within the token limit. "
+                "Required format: <think>step-by-step reasoning</think><answer>\\boxed{final_answer}</answer>"
+            )
+        elif not has_think_open and not has_answer_open:
+            feedback_parts.append(
+                "Your response does not follow the required format at all. "
+                "You must structure your response as: <think>your step-by-step reasoning here</think>"
+                "<answer>\\boxed{your_final_answer}</answer>. "
+                "Start with <think>, show your work, close with </think>, "
+                "then provide your final answer inside <answer>\\boxed{...}</answer>."
+            )
+        elif not has_full_format:
+            missing = []
+            if not has_think_close:
+                missing.append("</think> (you started reasoning but never closed the thinking block)")
+            if not has_answer_open:
+                missing.append("<answer> (you never started the answer block)")
+            if not has_answer_close:
+                missing.append("</answer> (you never closed the answer block)")
+            feedback_parts.append(
+                "Your response is missing: " + "; ".join(missing) + ". "
+                "Required format: <think>reasoning</think><answer>\\boxed{final_answer}</answer>"
+            )
+
+        if incorrect_format and not was_truncated:
+            if has_answer_open and has_answer_close:
+                feedback_parts.append(
+                    "Your answer block exists but does not contain a \\boxed{} expression. "
+                    "Place your final numerical or symbolic answer inside \\boxed{} within the <answer> tags."
+                )
+            elif not has_answer_open:
+                feedback_parts.append(
+                    "No answer was extracted because the <answer> block is missing. "
+                    "After </think>, write <answer>\\boxed{your_answer}</answer>."
+                )
+
+    # --- Rich correctness feedback ---
     if not correct and correctness_feedback:
-        feedback_parts.append(
-            f"Your answer is incorrect. The correct answer is {ground_truth}."
-        )
+        if pred and pred != "":
+            feedback_parts.append(
+                f"Your answer is incorrect. You answered {pred}, "
+                f"but the correct answer is {ground_truth}. "
+                "Review your reasoning for arithmetic or algebraic errors."
+            )
+        else:
+            feedback_parts.append(
+                f"Your answer is incorrect. The correct answer is {ground_truth}."
+            )
+
     feedback = " ".join(feedback_parts)
 
     return {

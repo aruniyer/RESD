@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
-# Phase 2: Vanilla SDPO on Qwen2.5-Math-1.5B
-# Same setup as Phase 1 GRPO but with self-distillation loss:
-#   - EMA teacher provides logit targets on reprompted sequences
-#   - Correct solutions from batch used as demonstrations for incorrect ones
-#   - JSD (alpha=0.5) between student and teacher on reprompted sequences
+# Phase 2 v2: SDPO on Qwen2.5-Math-1.5B with rich feedback + aligned hyperparams
+# Fixes from failed v1 run:
+#   1. Rich format+correctness feedback (like code/tooluse tasks have)
+#   2. correctness_feedback=True → tells model "you said X, correct is Y"
+#   3. teacher_update_rate=0.05 (was 0.0001, 500× too slow)
+#   4. distillation_topk=20 (was 100, matching original SDPO)
+#   5. success_reward_threshold=0.5 (was 1.0, now partial credit counts)
+#   6. remove_thinking_from_demonstration=True (cleaner demos)
+#   7. environment_feedback_only_without_solution=True (feedback only when no demo available)
 #
-# Key differences from GRPO:
-#   - CONFIG_NAME="sdpo" → sets policy_loss.loss_mode=sdpo
-#   - Self-distillation: alpha=0.5 (JSD), EMA rate=0.0001, top-k=100
-#   - Reprompt: correct solution from batch appended to prompt for incorrect samples
-#   - norm_adv_by_std_in_grpo=False (per sdpo.yaml default)
-#   - No external teacher server (EMA weights maintained internally)
+# Architecture:
+#   - EMA teacher provides logit targets on reprompted sequences
+#   - Correct solutions from batch used as demonstrations (thinking stripped)
+#   - When no solution available: rich feedback tells model what went wrong
+#   - JSD (alpha=0.5) between student and teacher on reprompted sequences
 
 set -xeuo pipefail
 
@@ -46,10 +49,10 @@ MAX_RESPONSE_LENGTH=${MAX_RESPONSE_LENGTH:-3072}
 MAX_REPROMPT_LENGTH=${MAX_REPROMPT_LENGTH:-1536}
 MAX_MODEL_LEN=$((MAX_PROMPT_LENGTH + MAX_RESPONSE_LENGTH))
 
-# Self-distillation hyperparameters
+# Self-distillation hyperparameters (aligned with original SDPO defaults)
 ALPHA=${ALPHA:-0.5}                        # 0.5 = JSD (symmetric KL)
-EMA_WEIGHT=${EMA_WEIGHT:-0.0001}           # slow EMA teacher update
-DISTILLATION_TOPK=${DISTILLATION_TOPK:-100}  # top-100 logits for efficiency
+EMA_WEIGHT=${EMA_WEIGHT:-0.05}             # fast EMA teacher update (original default)
+DISTILLATION_TOPK=${DISTILLATION_TOPK:-20}   # top-20 logits (original default)
 IS_CLIP=${IS_CLIP:-2.0}                    # importance sampling clip
 
 # Smoke / full toggle
@@ -59,7 +62,7 @@ SMOKE_STEPS=${SMOKE_STEPS:-0}
 LOGGER=${LOGGER:-'["console"]'}
 
 project_name=${PROJECT_NAME:-'codistill_repro_math'}
-exp_name=${EXP_NAME:-'qwen25math_1.5b_sdpo_phase2'}
+exp_name=${EXP_NAME:-'qwen25math_1.5b_sdpo_phase2_v2'}
 
 DATA=(
   data.train_files=${train_path}
@@ -74,7 +77,7 @@ DATA=(
   custom_reward_function.path=selfevolve/resd/feedback/math.py
   custom_reward_function.name=compute_score_r1zero
   +custom_reward_function.reward_kwargs.format_feedback=True
-  +custom_reward_function.reward_kwargs.correctness_feedback=False
+  +custom_reward_function.reward_kwargs.correctness_feedback=True
 )
 
 MODEL=(
@@ -99,7 +102,10 @@ DISTILLATION=(
   actor_rollout_ref.actor.self_distillation.dont_reprompt_on_self_success=True
   actor_rollout_ref.actor.self_distillation.is_clip=${IS_CLIP}
   actor_rollout_ref.actor.self_distillation.max_reprompt_len=${MAX_REPROMPT_LENGTH}
-  actor_rollout_ref.actor.self_distillation.success_reward_threshold=1.0
+  actor_rollout_ref.actor.self_distillation.success_reward_threshold=0.5
+  actor_rollout_ref.actor.self_distillation.remove_thinking_from_demonstration=True
+  actor_rollout_ref.actor.self_distillation.include_environment_feedback=True
+  actor_rollout_ref.actor.self_distillation.environment_feedback_only_without_solution=True
 )
 
 ROLLOUT=(
