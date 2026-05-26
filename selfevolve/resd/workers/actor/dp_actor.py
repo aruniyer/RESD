@@ -1143,6 +1143,7 @@ class DataParallelPPOActor(BasePPOActor):
                     rollout_is_weights = model_inputs.get("rollout_is_weights", None)
 
                     _per_token_loss = None  # may not be set in all branches (e.g. RLSD)
+                    distill_response_mask = response_mask  # default for branches that don't set it
 
                     if rlsd_enabled:
                         # RLSD: compute token-level weighted advantages, then use vanilla PPO loss
