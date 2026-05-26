@@ -134,11 +134,10 @@ class LogprobsTensors(NamedTuple):
 
 
 class VLLMEngine:
-    def __init__(self, ckpt_path, n_logprobs=0, tp_size=1):
+    def __init__(self, ckpt_path, n_logprobs=0, tp_size=1, max_model_len=None):
+        import os
         self.n_logprobs = n_logprobs
-        # self.llm = LLM(ckpt_path, tensor_parallel_size=tp_size, trust_remote_code=True,
-        #                enable_chunked_prefill=False, distributed_executor_backend="ray",
-        #                max_logprobs=n_logprobs, gpu_memory_utilization=0.7)
+        _max_model_len = max_model_len or int(os.environ.get("TEACHER_MAX_MODEL_LEN", 65536))
         self.llm = LLM(
             ckpt_path,
             tensor_parallel_size=tp_size,
@@ -147,7 +146,7 @@ class VLLMEngine:
             enable_prefix_caching=True,
             max_logprobs=n_logprobs,
             gpu_memory_utilization=0.85,
-            max_model_len=65536,
+            max_model_len=_max_model_len,
         )
 
     def get_topk_logprobs(self, prompt_token_ids, temperature=0.8, max_new_tokens=1, only_response=False):

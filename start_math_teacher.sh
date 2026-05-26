@@ -13,6 +13,8 @@ cd "${SCRIPT_DIR}/selfevolve/resd/teacher"
 export PROXY_FRONTEND_PORT=${TEACHER_PORT:-15555}
 export PROXY_BACKEND_PORT=${TEACHER_BACKEND_PORT:-15556}
 export VLLM_USE_V1=1
+# Qwen2.5-Math-7B-Instruct has max_position_embeddings=4096
+export TEACHER_MAX_MODEL_LEN=${TEACHER_MAX_MODEL_LEN:-4096}
 
 TEACHER_MODEL=${TEACHER_MODEL:-"Qwen/Qwen2.5-Math-7B-Instruct"}
 
