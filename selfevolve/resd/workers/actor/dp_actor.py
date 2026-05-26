@@ -1142,6 +1142,8 @@ class DataParallelPPOActor(BasePPOActor):
                     # Weights are computed centrally in trainer and added when algorithm.rollout_is=True
                     rollout_is_weights = model_inputs.get("rollout_is_weights", None)
 
+                    _per_token_loss = None  # may not be set in all branches (e.g. RLSD)
+
                     if rlsd_enabled:
                         # RLSD: compute token-level weighted advantages, then use vanilla PPO loss
                         _rlsd_lambda_init = getattr(self_distillation_cfg, "rlsd_lambda_init", 0.5)
@@ -1362,7 +1364,7 @@ class DataParallelPPOActor(BasePPOActor):
                                 "response_mask": response_mask[dump_idx].detach().cpu(),
                                 "log_prob": log_prob[dump_idx].detach().cpu(),
                                 "teacher_log_prob": teacher_log_prob[dump_idx].detach().cpu(),
-                                "token_distill_loss": _per_token_loss[dump_idx].cpu(),
+                                "token_distill_loss": _per_token_loss[dump_idx].cpu() if _per_token_loss is not None else torch.zeros_like(log_prob[dump_idx]).cpu(),
                                 "input_ids": model_inputs["input_ids"][dump_idx].detach().cpu(),
                                 "response_ids": model_inputs["responses"][dump_idx].detach().cpu(),
                             }
