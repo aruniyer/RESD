@@ -34,8 +34,8 @@ export TASK
 train_path=data/math/train.parquet
 val_path="['data/math/math500.parquet','data/math/minerva.parquet','data/math/amc2024.parquet','data/math/olympiadbench.parquet']"
 
-# Hyperparameters
-TRAIN_BATCH_SIZE=${TRAIN_BATCH_SIZE:-32}
+# Hyperparameters (batch size must be divisible by n_gpus=3)
+TRAIN_BATCH_SIZE=${TRAIN_BATCH_SIZE:-24}
 ROLLOUT_BATCH_SIZE=${ROLLOUT_BATCH_SIZE:-8}
 LR=${LR:-1e-6}
 TOTAL_EPOCHS=${TOTAL_EPOCHS:-8}
@@ -89,7 +89,7 @@ MODEL=(
 ACTOR=(
   actor_rollout_ref.actor.optim.lr=$LR
   actor_rollout_ref.actor.ppo_mini_batch_size=${TRAIN_BATCH_SIZE}
-  actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=2
+  actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=4
   actor_rollout_ref.actor.optim.lr_warmup_steps=10
   actor_rollout_ref.actor.fsdp_config.param_offload=False
   actor_rollout_ref.actor.fsdp_config.optimizer_offload=False
