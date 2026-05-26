@@ -119,11 +119,11 @@ DISTILLATION=(
   actor_rollout_ref.actor.self_distillation.remove_thinking_from_demonstration=True
   actor_rollout_ref.actor.self_distillation.include_environment_feedback=True
   actor_rollout_ref.actor.self_distillation.environment_feedback_only_without_solution=True
-  # RLSD-specific params
-  actor_rollout_ref.actor.self_distillation.rlsd_lambda_init=${RLSD_LAMBDA_INIT}
-  actor_rollout_ref.actor.self_distillation.rlsd_lambda_final=${RLSD_LAMBDA_FINAL}
-  actor_rollout_ref.actor.self_distillation.rlsd_lambda_warmdown_steps=${RLSD_WARMDOWN_STEPS}
-  actor_rollout_ref.actor.self_distillation.rlsd_epsilon_w=${RLSD_EPSILON_W}
+  # RLSD-specific params (use + prefix since not in base struct)
+  +actor_rollout_ref.actor.self_distillation.rlsd_lambda_init=${RLSD_LAMBDA_INIT}
+  +actor_rollout_ref.actor.self_distillation.rlsd_lambda_final=${RLSD_LAMBDA_FINAL}
+  +actor_rollout_ref.actor.self_distillation.rlsd_lambda_warmdown_steps=${RLSD_WARMDOWN_STEPS}
+  +actor_rollout_ref.actor.self_distillation.rlsd_epsilon_w=${RLSD_EPSILON_W}
   # Teacher feedback server
   actor_rollout_ref.actor.self_distillation.teacher.enabled=True
   actor_rollout_ref.actor.self_distillation.teacher.server_ip=${TEACHER_IP}
